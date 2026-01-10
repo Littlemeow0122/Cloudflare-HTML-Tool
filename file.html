@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>HTML Cloudflare 清除工具</title>
+<title>HTML Cloudflare 工具</title>
 
 <style>
 /* 基礎 */
@@ -35,7 +35,7 @@ html, body {
   max-width: 100%;
 }
 
-textarea {
+textarea, input[type="url"] {
   width: 100%;
   max-width: 100%;
   height: 180px;
@@ -44,6 +44,25 @@ textarea {
   border: 1px solid #ccc;
   font-family: monospace;
   resize: vertical;
+  box-sizing: border-box;
+}
+
+input[type="url"] {
+  height: 48px;
+  font-size: 16px;
+}
+
+/* URL 結果顯示 */
+#urlResult {
+  background: #f0f9ff;
+  border: 2px solid #0ea5e9;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 12px;
+  font-family: monospace;
+  font-size: 14px;
+  word-break: break-all;
+  display: none;
 }
 
 /* 按鈕區 */
@@ -52,6 +71,7 @@ textarea {
   align-items: center;
   gap: 12px;
   margin-top: 10px;
+  flex-wrap: wrap;
 }
 
 button {
@@ -65,6 +85,8 @@ button {
 .clean { background: #4f46e5; color: #fff; }
 .copy { background: #10b981; color: #fff; }
 .test { background: #0ea5e9; color: #fff; }
+.url-convert { background: #f59e0b; color: #fff; }
+.copy-url { background: #059669; color: #fff; }
 .back { background: #6b7280; color: #fff; }
 
 /* 🔴 細紅色發亮點 */
@@ -114,13 +136,42 @@ button {
 
 /* 預設隱藏測試按鈕 */
 #testArea { display: none; }
+
+/* 動畫提示 */
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+#urlResult.show {
+  display: block;
+  animation: slideDown 0.3s ease-out;
+}
 </style>
 </head>
 <body>
 
 <div class="container">
 
-  <h1>🧹 HTML Cloudflare 清除工具</h1>
+  <h1>🧹 HTML Cloudflare </h1>
+
+  <!-- URL 轉換區域 -->
+  <div class="card">
+    <h3>🌐 URL 轉換</h3>
+    <input type="url" id="urlInput" placeholder="輸入網址 ex: https://example.com">
+    <div class="buttons">
+      <button class="url-convert" onclick="convertURL()">🔗 轉換成下載URL</button>
+    </div>
+    
+    <!-- URL 轉換結果 -->
+    <div id="urlResult">
+      <strong>轉換完成：</strong><br>
+      <span id="convertedUrl"></span>
+      <div class="buttons" style="margin-top: 8px;">
+        <button class="copy-url" onclick="copyConvertedURL()">📋 複製轉換URL</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 編輯區域 -->
   <div class="editor-area" id="editorArea">
@@ -128,7 +179,7 @@ button {
     <!-- 原始 HTML -->
     <div class="card">
       <h3>原始 HTML</h3>
-      <textarea id="input" placeholder="貼上原始 HTML"></textarea>
+      <textarea id="input" placeholder="貼上原始 HTML 或手動貼上轉換URL"></textarea>
     </div>
 
     <!-- 清除後 HTML -->
@@ -164,7 +215,61 @@ button {
 </div>
 
 <script>
+let convertedURL = "";
 let isPreviewMode = false;
+
+const BASE_URL = "https://full-get-website-html.nicchen0122.workers.dev/url";
+
+function showNotification(message, duration = 2000) {
+  const notification = document.createElement('div');
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #10b981;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.2);
+    z-index: 10000;
+    font-weight: 500;
+    animation: slideDown 0.3s ease-out;
+  `;
+  notification.textContent = message;
+  document.body.appendChild(notification);
+  
+  setTimeout(() => {
+    notification.remove();
+  }, duration);
+}
+
+function convertURL() {
+  const urlInput = document.getElementById("urlInput").value.trim();
+  if (!urlInput) {
+    showNotification("❌ 請輸入網址！");
+    return;
+  }
+
+  try {
+    new URL(urlInput);
+  } catch {
+    showNotification("❌ 請輸入有效的網址！");
+    return;
+  }
+
+  convertedURL = `${BASE_URL}:${urlInput}`;
+  
+  document.getElementById("convertedUrl").textContent = convertedURL;
+  document.getElementById("urlResult").classList.add("show");
+  
+  showNotification("✅ URL 轉換完成！");
+}
+
+function copyConvertedURL() {
+  navigator.clipboard.writeText(convertedURL).then(() => {
+    showNotification("📋 已複製轉換 URL！");
+  });
+}
 
 function getCleanHTML() {
   const html = document.getElementById("input").value;
@@ -173,7 +278,6 @@ function getCleanHTML() {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
-  // 移除 Cloudflare script
   doc.querySelectorAll("script").forEach(s => {
     if (
       s.src?.includes("cdn-cgi/challenge-platform") ||
@@ -183,7 +287,6 @@ function getCleanHTML() {
     }
   });
 
-  // 移除 Cloudflare iframe
   doc.querySelectorAll("iframe").forEach(f => {
     if (
       f.src?.includes("challenge-platform") ||
@@ -199,40 +302,38 @@ function getCleanHTML() {
 function cleanHTML() {
   const result = getCleanHTML();
   if (!result) {
-    alert("請先輸入 HTML！");
+    showNotification("❌ 請先輸入 HTML！");
     return;
   }
 
   document.getElementById("output").value = result;
   document.getElementById("testArea").style.display = "block";
   
-  // 🚀 生成後自動滾動到底部
   document.getElementById("testArea").scrollIntoView({ 
     behavior: 'smooth', 
     block: 'center' 
   });
+  
+  showNotification("✅ 生成完成！");
 }
 
 function previewHTML() {
   const result = document.getElementById("output").value;
   if (!result) {
-    alert("請先生成結果！");
+    showNotification("❌ 請先生成結果！");
     return;
   }
 
-  // 切換到全屏預覽模式
   document.getElementById("editorArea").classList.add("hidden");
   document.getElementById("previewMode").classList.add("active");
   isPreviewMode = true;
 
-  // 載入到全屏 iframe
   const iframe = document.getElementById("previewIframe");
   iframe.srcdoc = result;
   iframe.classList.add("fullscreen");
 }
 
 function backToEditor() {
-  // 返回編輯模式
   document.getElementById("editorArea").classList.remove("hidden");
   document.getElementById("previewMode").classList.remove("active");
   isPreviewMode = false;
@@ -243,10 +344,13 @@ function backToEditor() {
 
 function copyHTML() {
   const out = document.getElementById("output");
-  if (!out.value) return;
-  out.select();
-  document.execCommand("copy");
-  alert("已複製到剪貼簿！");
+  if (!out.value) {
+    showNotification("❌ 沒有內容可複製！");
+    return;
+  }
+  navigator.clipboard.writeText(out.value).then(() => {
+    showNotification("📋 已複製結果！");
+  });
 }
 </script>
 
